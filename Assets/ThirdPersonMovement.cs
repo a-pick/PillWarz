@@ -17,6 +17,7 @@ public class ThirdPersonMovement : MonoBehaviour
     public Transform ceilingCheckMaster;
     public float groundDistance = 0.4f;
     public float ceilingDistance = 0.01f;
+    public float groundSlamTime = 3f;
     
     public LayerMask groundMask;
     public LayerMask jumpPadMask;
@@ -26,17 +27,22 @@ public class ThirdPersonMovement : MonoBehaviour
     [SerializeField] private bool isJumpPad;
     [SerializeField] private bool underCeiling;
     [SerializeField] private bool hasUnstuckCeiling;
+    [SerializeField] private float groundSlamCounter;
+    [SerializeField] private bool groundSlamInProgress = false;
 
     public AudioSource personalSounds;
 
     public AudioClip bonkSound;
+    public AudioClip slamSound;
 
     public ParticleSystem bonkParticles;
+    public ParticleSystem groundSlamParticles;
     
     private void Start()
     {
         // lock cursor on game start (temporary)
         Cursor.lockState = CursorLockMode.Locked;
+        groundSlamCounter = groundSlamTime;
     }
 
     private void Update()
@@ -47,11 +53,26 @@ public class ThirdPersonMovement : MonoBehaviour
         isGrounded = Physics.CheckSphere(groundCheck, groundDistance, groundMask);
         isJumpPad = Physics.Raycast(groundCheck, -transform.up, out var jumpHit, groundDistance, jumpPadMask);
         underCeiling = Physics.Raycast(ceilingCheck, transform.up, ceilingDistance, groundMask);
+        
+        if (groundSlamCounter > 0) {
+            groundSlamCounter -= Time.deltaTime;
+        }
 
         // set grounded y velocity
         if (isGrounded)
         {
+            // when ground slam lands
+            if (groundSlamInProgress)
+            {
+                _velocity.y = Mathf.Sqrt(Mathf.Abs(_velocity.y) * -0.5f * gravity);
+                personalSounds.clip = slamSound;
+                personalSounds.Play();
+                groundSlamParticles.Play();
+            }
+            
+            groundSlamInProgress = false;
             hasUnstuckCeiling = false;
+            
             if (_velocity.y < 0)
             {
                 _velocity.y = -2f;
@@ -73,10 +94,19 @@ public class ThirdPersonMovement : MonoBehaviour
             _velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
         }
         
+        // ground slam
+        if (Input.GetKeyDown(KeyCode.LeftControl) && !isGrounded && groundSlamCounter <= 0)
+        {
+            _velocity.y = -Mathf.Sqrt(20f * -2f * gravity);
+            groundSlamCounter = groundSlamTime;
+            groundSlamInProgress = true;
+        }
+
         // jump pads
         if (isJumpPad)
         {
             isGrounded = true;
+            hasUnstuckCeiling = false;
             _velocity.y = Mathf.Sqrt(jumpPadHeight * -2f * gravity);
             var _audio = jumpHit.transform.GetComponent<AudioSource>();
             if (_audio)
